@@ -18,28 +18,11 @@ const resolverPathMap = {
 };
 
 class ServerlessAppSyncSimulator {
-  constructor(serverless) {
+  constructor(serverless, cliOptions) {
     this.serverless = serverless;
-    this.options = merge(
-      {
-        apiKey: '0123456789',
-        port: 20002,
-        wsPort: 20003,
-        location: '.',
-        refMap: {},
-        getAttMap: {},
-        dynamoDb: {
-          endpoint: `http://localhost:${get(this.serverless.service, 'custom.dynamodb.start.port', 8000)}`,
-          region: 'localhost',
-          accessKeyId: 'DEFAULT_ACCESS_KEY',
-          secretAccessKey: 'DEFAULT_SECRET',
-        },
-      },
-      get(this.serverless.service, 'custom.appsync-simulator', {}),
-    );
+    this.cliOptions = cliOptions;
     this.log = this.log.bind(this);
     this.debugLog = this.debugLog.bind(this);
-
     this.simulator = null;
 
     // Hack: appsync-cli-simulator does not support BatchInvoke.
@@ -49,7 +32,34 @@ class ServerlessAppSyncSimulator {
     addDataLoader('AMAZON_ELASTICSEARCH', ElasticDataLoader);
     addDataLoader('RELATIONAL_DATABASE', NotImplementedDataLoader);
 
+    this.commands = {
+      'appsync-offline': {
+        usage: 'Start the AppSync simulator',
+        options: {
+          port: {
+            shortcut: 'p',
+            usage: 'The port of the operations server',
+          },
+          wsPort: {
+            shortcut: 'w',
+            usage: 'The port of the subscriptions server',
+          },
+          apiKey: {
+            shortcut: 'k',
+            usage: 'The api key to use for authentication',
+          },
+          location: {
+            shortcut: 'l',
+            usage: 'The location of your Lambda handlers',
+          },
+        },
+        lifecycleEvents: ['start', 'end'],
+      },
+    };
+
     this.hooks = {
+      'appsync-offline:start': this.startServerAndWait.bind(this),
+      'appsync-offline:end': this.endServer.bind(this),
       'before:offline:start:init': this.startServer.bind(this),
       'before:offline:start:end': this.endServer.bind(this),
     };
@@ -65,9 +75,33 @@ class ServerlessAppSyncSimulator {
     }
   }
 
+  async startServerAndWait() {
+    await this.startServer();
+    await this.constructor.waitForTermination();
+  }
+
   async startServer() {
+    const options = merge(
+      {
+        apiKey: '0123456789',
+        port: 20002,
+        wsPort: 20003,
+        location: '.',
+        refMap: {},
+        getAttMap: {},
+        dynamoDb: {
+          endpoint: `http://localhost:${get(this.serverless.service, 'custom.dynamodb.start.port', 8000)}`,
+          region: 'localhost',
+          accessKeyId: 'DEFAULT_ACCESS_KEY',
+          secretAccessKey: 'DEFAULT_SECRET',
+        },
+      },
+      get(this.serverless.service, 'custom.appsync-simulator', {}),
+      this.cliOptions,
+    );
+
     try {
-      this.buildResourceResolvers();
+      this.buildResourceResolvers(options);
       this.serverless.service.functions = this.resolveResources(
         this.serverless.service.functions,
       );
@@ -79,8 +113,8 @@ class ServerlessAppSyncSimulator {
       );
 
       this.simulator = new AmplifyAppSyncSimulator({
-        port: this.options.port,
-        wsPort: this.options.wsPort,
+        port: options.port,
+        wsPort: options.wsPort,
       });
 
       await this.simulator.start();
@@ -93,7 +127,7 @@ class ServerlessAppSyncSimulator {
       const config = getAppSyncConfig({
         plugin: this,
         serverless: this.serverless,
-        options: this.options,
+        options,
       }, appSync);
 
       this.debugLog(`AppSync Config ${appSync.name}`);
@@ -112,7 +146,19 @@ class ServerlessAppSyncSimulator {
     this.simulator.stop();
   }
 
-  buildResourceResolvers() {
+  static async waitForTermination() {
+    await new Promise((resolve) => {
+      process
+        // SIGINT will be usually sent when user presses ctrl+c
+        .on('SIGINT', () => resolve('SIGINT'))
+        // SIGTERM is a default termination signal in many cases,
+        // for example when "killing" a subprocess spawned in node
+        // with child_process methods
+        .on('SIGTERM', () => resolve('SIGTERM'));
+    });
+  }
+
+  buildResourceResolvers(options) {
     const refResolvers = reduce(
       get(this.serverless.service, 'resources.Resources', {}),
       (acc, res, name) => {
@@ -127,8 +173,8 @@ class ServerlessAppSyncSimulator {
     );
 
     this.resourceResolvers = {
-      RefResolvers: { ...refResolvers, ...this.options.refMap },
-      'Fn::GetAttResolvers': this.options.getAttMap,
+      RefResolvers: { ...refResolvers, ...options.refMap },
+      'Fn::GetAttResolvers': options.getAttMap,
     };
   }
 

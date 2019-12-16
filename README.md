@@ -4,8 +4,6 @@ This serverless plugin is a wrapper for [amplify-appsync-simulator](amplify-apps
 # Requires
 - [serverless framework](https://github.com/serverless/serverless)
 - [serverless-appsync-plugin](https://github.com/sid88in/serverless-appsync-plugin)
-- [serverless-offline](https://github.com/dherault/serverless-offline)
-- [serverless-dynamodb-local](https://github.com/99xt/serverless-dynamodb-local) (when using dynamodb resolvers only)
 
 # Install
 
@@ -17,7 +15,28 @@ yarn add serverless-appsync-simulator
 
 # Usage
 
-This plugin relies on your serverless yml file and on the `serverless-offline` plugin.
+## CLI
+
+````bash
+sls appsync-offline
+AppSync Simulator: AppSync endpoint: http://localhost:20002/graphql
+AppSync Simulator: GraphiQl: http://localhost:20002
+````
+
+(*)
+
+### Options
+
+| Option | Description |
+|--------| ------------|
+| --port / -p | The port of the operations server |
+| --wsPort / -w | The port of the subscriptions server |
+| --apiKey / -k | The api key to use for authentication |
+| --location / -l | The location of your Lambda handlers |
+
+## With `serverless-offline`
+
+This plugin also works with the [serverless-offline](https://github.com/dherault/serverless-offline)
 
 ````yml
 plugins:
@@ -31,18 +50,13 @@ plugins:
 To start the simulator, run the following command:
 ````bash
 sls offline start
-````
-
-You should see in the logs something like:
-
-````bash
 ...
 Serverless: AppSync endpoint: http://localhost:20002/graphql
 Serverless: GraphiQl: http://localhost:20002
 ...
 ````
 
-# Configuration
+# Yml Configuration
 
 Put options under `custom.appsync-simulator` in your `serverless.yml` file
 
